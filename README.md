@@ -1,41 +1,60 @@
-# 🛡️ Personal SOC & CyberSecurity Homelab
+# 🛡️ Hybrid Enterprise SOC & CyberSecurity Homelab (Proxmox VE + Microsoft Azure)
 
 ## Overview
-This repository documents the architecture, configuration, and deployment of my personal, fully isolated CyberSecurity Home Lab. The environment was designed to simulate enterprise infrastructure for Blue Teaming (SOC operations), Malware Analysis, and Active Directory security testing.
+This repository documents the architecture, engineering, and operational workflows of my **Hybrid Enterprise Security Operations Center (SOC) and Cyber Range**.
 
-## Hardware Infrastructure
-The environment utilizes a high-performance workstation for virtualization and a dedicated bare-metal desktop for administration:
-* **Hypervisor:** Proxmox VE 8 (Hosted on HP Z440 Workstation - Intel Xeon, 64GB RAM, NVMe/SSD Storage). This single node hosts all virtual machines and networks, including the TrueNAS storage server.
-* **Management Station (Daily Driver):** Dell Optiplex running Ubuntu Desktop. Used as the primary administrative console for infrastructure management, secure SSH access, documentation, and SIEM log analysis.
+Moving beyond traditional isolated open-source homelabs, this environment bridges on-premises virtualization (**Proxmox VE**) with an enterprise cloud security stack (**Microsoft Sentinel, Microsoft Defender XDR, Microsoft Entra ID P2, and Microsoft Intune**). On-premises virtual machines act as realistic corporate endpoints, domain controllers, and attack targets, while Microsoft Cloud services handle centralized SIEM/SOAR analytics, XDR endpoint telemetry, hybrid identity protection, and automated Cyber Threat Intelligence (MISP) correlation.
 
-## Network Topology & Segmentation
-The network is logically divided into two distinct segments using a virtualized **pfSense** firewall/router. This ensures strict isolation of the SOC Lab (where malware and attacks are detonated) from the private home network.
+## 🏗️ Architecture Evolution: Local Homelab to Hybrid Enterprise SOC
 
-* **`vmbr0` (Home LAN - 192.168.1.0/24):** The primary network with internet access. Hosts the offensive machines (Red Team) and core services (like NAS).
-* **`vmbr1` (SOC Lab LAN - 10.0.0.0/24):** The isolated "sandbox" environment. All outbound traffic to the home network is explicitly blocked via pfSense firewall rules. 
+| Architecture Domain | Phase 1: Legacy Local Homelab | Phase 2: Hybrid Enterprise SOC (Current) |
+| :--- | :--- | :--- |
+| **SIEM / SOAR** | Local Wazuh (OpenSearch) on Ubuntu | **Microsoft Sentinel** (Log Analytics Workspace) |
+| **Endpoint Security (EDR/XDR)** | Basic Host Antivirus | **Microsoft Defender for Endpoint (MDE P2)** |
+| **Identity & Access (IAM)** | Isolated Active Directory (DC) | **Hybrid AD + Microsoft Entra ID P2** (Entra Connect) |
+| **Threat Intelligence (CTI)** | Manual IP lists / local hosts | **MISP (Docker)** synced to Sentinel via Python STIX 2.1 API |
+| **Endpoint Policy Management** | Classic AD Group Policy (GPO) | **MDE Management & Microsoft Intune** Policy Sync |
+| **Web App Protection (WAF)** | None | **Azure Application Gateway with WAF v2** (OWASP Juice Shop) |
 
-> <img width="872" height="383" alt="Homelab architecturev2" src="https://github.com/user-attachments/assets/b3567119-9a24-4d39-938a-d8588fa72ae4" />
+## 💻 Hardware Infrastructure
+The on-premises segment utilizes a dedicated workstation for virtualization:
 
+* **Hypervisor:** Proxmox VE 8 (Hosted on HP Z440 Workstation - Intel Xeon, 64GB RAM, 1TB SATA III SSD `LVM-Thin` Storage). This node hosts all corporate endpoints, Active Directory, perimeter firewall, and Threat Intelligence containers.
 
-## 🖥️ Virtual Machines Inventory (Infrastructure as Code)
+## 🌐 Network Topology & Segmentation (OPSEC Sanitized)
+The local network is logically segmented using a virtualized **pfSense** firewall/router to isolate the SOC Lab (where attack simulations are executed) from the private home network while permitting encrypted outbound telemetry (HTTPS/443) to Microsoft Azure.
 
-The following table details the virtual machine configurations, extracted directly from Proxmox `.conf` files.
+* **`vmbr0` (Home LAN - `<HOME_LAN_SUBNET>`):** The primary residential network with internet access and NAS backup storage.
+* **`vmbr1` (SOC Lab LAN - `<SOC_LAB_SUBNET>`):** The isolated corporate sandbox environment. All traffic destined for `<HOME_LAN_SUBNET>` is explicitly dropped via top-priority pfSense firewall rules (*silent drop*), while Azure Monitor Agent (AMA) and Defender XDR telemetry flows securely to the cloud.
 
-| VM ID | Hostname | OS | vCPU | RAM | Network (Bridge) | IP Address | Role / Description |
+> <img width="872" height="383" alt="Homelab architecturev2" src="https://github.com/user-attachments/assets/b3567119-9a24-4d39-938a-d38a-d8588fa72ae4" />
+
+## 🖥️ Virtual Machines Inventory (On-Premises Proxmox Node)
+
+The following table details the virtual machine configurations hosted on the Proxmox VE hypervisor (IP addresses are represented using standardized OPSEC placeholders):
+
+| VM ID | Hostname | OS | vCPU | RAM | Network (Bridge) | IP Placeholder | Role / Description |
 |---|---|---|---|---|---|---|---|
-| **101** | `pfSense-Router` | pfSense CE 2.6.0 | 2 | 2 GB | `vmbr0`, `vmbr1` | `192.168.1.x` / `10.0.0.x` | Virtual Firewall/Router. Enforces network isolation. |
-| **105** | `SIEM` | Ubuntu Server 26.04 | 4 | 8 GB | `vmbr1` | `10.0.0.12` | Centralized log management and monitoring (Wazuh SIEM). |
-| **102** | `AD-Server-2025` | Windows Server 2025| 4 | 12.5 GB| `vmbr1` | `10.0.0.x` | Domain Controller (Active Directory) for the isolated network. |
-| **104** | `Win11Victim` | Windows 11 25H2 | 4 | 6.5 GB | `vmbr1` | `10.0.0.x` | Domain-joined endpoint (Target for attack simulations). |
-| **103** | `Kali-Attacker`| Kali Linux 2026.2 | 4 | 7 GB | `vmbr0` | `192.168.1.200` | Offensive operations machine (Red Teaming). |
-| **106** | `TrueNAS` | TrueNAS SCALE | 4 | 12 GB | `vmbr0` | `192.168.1.x` | Virtualized local file server and backup storage. |
-| **100** | `FFAStrans` | Windows Server 2022| 14 | 8 GB | `vmbr0` | `192.168.1.x` | Utility server (FFAStrans) / Target in the LAN zone. |
+| **101** | `pfSense-Router` | pfSense CE | 2 | 2 GB | `vmbr0`, `vmbr1` | `<HOME_WAN_IP>` / `<LAB_GATEWAY_IP>` | Perimeter Firewall/Router. Enforces LAN segmentation & RFC 1918 isolation. |
+| **102** | `AD-Server-2025` | Windows Server 2025 | 4 | 12.5 GB | `vmbr1` | `<DC_IP>` | Domain Controller (`soclab.local`), DNS, Entra ID Connect, AMA & MDE sensor. |
+| **104** | `Win11Victim` | Windows 11 25H2 | 4 | 6.5 GB | `vmbr1` | `<WIN11_VICTIM_IP>` | Domain-joined corporate endpoint (Intune MDM, MDE, AMA, AiTM Attack Target). |
+| **105** | `CTI-Node` | Ubuntu Server 26.04 | 4 | 8 GB | `vmbr1` | `<CTI_NODE_IP>` | Docker host running **MISP Threat Intelligence**, **OWASP Juice Shop**, & AMA Syslog. |
+| **103** | `Kali-Attacker` | Kali Linux 2026.2 | 4 | 7 GB | `vmbr1` | `<KALI_ATTACKER_IP>` | Red Team machine for credential, RDP, and web application attack simulations. |
+| **106** | `TrueNAS` | TrueNAS SCALE | 4 | 12 GB | `vmbr0` | `<TRUENAS_IP>` | ZFS RAID storage server for snapshots, ISOs, and backups. |
 
-## 🛠️ Key Technologies & Tool Stack
-* **SIEM / EDR:** Wazuh (OpenSearch, Filebeat)
-* **Firewall / Routing:** pfSense (Stateful Packet Inspection)
-* **Virtualization:** Proxmox VE (QEMU/KVM)
-* **Identity & Access Management:** Microsoft Active Directory
+## 📂 Repository Structure
+
+* `/iac` – Declarative **Azure Bicep** templates (`landing-zone.bicep`, `sentinel-onboarding.bicep`) adhering to the Microsoft Cloud Adoption Framework (CAF).
+* `/src` – Custom **Python 3** scripts automating Threat Intelligence (IOC) extraction from MISP REST API to Microsoft Sentinel in STIX 2.1 format.
+* `/kql` – Custom **Kusto Query Language (KQL)** detection rules and Advanced Hunting queries for Microsoft Sentinel and Defender XDR.
+
+## 🛠️ Key Technologies & Enterprise Stack
+* **Cloud SIEM & XDR:** Microsoft Sentinel, Log Analytics Workspace, Microsoft Defender XDR, Microsoft Defender for Servers Plan 2, Azure Monitor Agent (AMA) with Data Collection Rules (DCR)
+* **Identity & Access Management:** Active Directory Domain Services (AD DS), Microsoft Entra ID P2, Entra ID Protection, Conditional Access, Phishing-Resistant MFA (Passkeys / FIDO2)
+* **Endpoint Management:** Microsoft Intune (MDM Auto-Enrollment & EDR Onboarding Policies)
+* **Threat Intelligence:** MISP (Docker), Python REST API Connector, STIX 2.1, OSINT Feeds (CIRCL, Botvrij.eu)
+* **Web Application Security:** Azure Application Gateway (WAF v2 in Prevention Mode), OWASP Juice Shop (Docker)
+* **Infrastructure & Virtualization:** Proxmox VE (QEMU/KVM, LVM-Thin), Azure Bicep (IaC), pfSense Firewall
 
 ---
-*Disclaimer: This documentation is created for cybersecurity portfolio purposes. It contains only RFC 1918 private IP addresses. No sensitive personal data or public IPs are exposed.*
+*Disclaimer & OPSEC Notice: This documentation is engineered for cybersecurity portfolio purposes following TLP:CLEAR sanitization standards. All internal RFC 1918 IP addresses, subnet CIDRs, and cloud tenant identifiers have been replaced with semantic placeholders (e.g., `<DC_IP>`, `<CTI_NODE_IP>`, `<SOC_LAB_SUBNET>`).*

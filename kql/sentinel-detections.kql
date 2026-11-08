@@ -1,0 +1,42 @@
+// ============================================================================
+// 1. Correlation: On-Premises Proxmox RDP Logons vs. MISP Threat Intel IPs
+// ============================================================================
+let Malicious_IPs = 
+    ThreatIntelligenceIndicator
+    | where ConfidenceScore == 100
+    | where isnotempty(NetworkIP)
+    | summarize make_set(NetworkIP);
+SecurityEvent
+| where EventID == 4624
+| where LogonType == 10 // Remote Desktop Protocol (RDP)
+| where IpAddress in (Malicious_IPs)
+| project TimeGenerated, Computer, Account, IpAddress, Activity
+
+// ============================================================================
+// 2. Web Application Firewall: Azure Application Gateway WAF v2 Blocks (OWASP)
+// ============================================================================
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.NETWORK"
+| where Category == "ApplicationGatewayFirewallLog"
+| where action_s == "Matched" or action_s == "Blocked"
+| project TimeGenerated, clientIp_s, requestUri_s, ruleId_s, details_message_s
+
+// ============================================================================
+// 3. Identity Protection: AiTM & Anomalous Token Risk Events (Sentinel)
+// ============================================================================
+AADUserRiskEvents
+| where TimeGenerated > ago(24h)
+| where UserPrincipalName == "aitm-target@yourlab.com"
+| where RiskEventType in ("attackerinTheMiddle", "anomalousToken", "unfamiliarFeatures")
+| project TimeGenerated, RiskEventType, RiskLevel, IpAddress, DetectionTimingType, Activity
+| sort by TimeGenerated desc
+
+// ============================================================================
+// 4. Advanced Hunting: Session Cookie Replay Detection (Multi-IP per SessionId)
+// ============================================================================
+AADSignInEventsBeta
+| where Timestamp > ago(24h)
+| where AccountUpn == "aitm-target@yourlab.com"
+| where isnotempty(SessionId)
+| summarize IPs = make_set(IPAddress), Countries = make_set(Country), Apps = make_set(Application) by SessionId
+| where array_length(IPs) > 1
