@@ -1,5 +1,9 @@
 param location string = 'centralus'
 param deployBastion bool = false
+param vnetAddressPrefix string = '10.50.0.0/16'
+param serversSubnetPrefix string = '10.50.1.0/24'
+param clientsSubnetPrefix string = '10.50.2.0/24'
+param bastionSubnetPrefix string = '10.50.255.0/26'
 param tags object = {
   workload: 'cyberrange'
   env: 'prod'
@@ -48,14 +52,14 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
   properties: {
     addressSpace: {
       addressPrefixes: [
-        '10.50.0.0/16'
+        vnetAddressPrefix
       ]
     }
     subnets: [
       {
         name: 'snet-servers'
         properties: {
-          addressPrefix: '10.50.1.0/24'
+          addressPrefix: serversSubnetPrefix
           networkSecurityGroup: {
             id: nsg.id
           }
@@ -64,7 +68,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
       {
         name: 'snet-clients'
         properties: {
-          addressPrefix: '10.50.2.0/24'
+          addressPrefix: clientsSubnetPrefix
           networkSecurityGroup: {
             id: nsg.id
           }
@@ -73,7 +77,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
       {
         name: 'AzureBastionSubnet'
         properties: {
-          addressPrefix: '10.50.255.0/26'
+          addressPrefix: bastionSubnetPrefix
         }
       }
     ]
